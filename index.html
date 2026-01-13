@@ -4,30 +4,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LinguaFlow Pro - Professional Text Converter</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+    <title>LinguaFlow Pro - Advanced Command Center</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💎</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
-      // Shim process.env for browser environments where it's not pre-defined
-      window.process = window.process || { env: {} };
+      window.process = { env: { API_KEY: "" } }; // Placeholder shim
     </script>
     <style>
-      :root { color-scheme: light; }
+      :root { color-scheme: light; --accent: #2563eb; }
       body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f8faff;
-        color: #0f172a;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background-color: #0f172a; /* Deep luxury slate */
+        color: #f1f5f9;
+        overflow-x: hidden;
       }
-      textarea, input {
-        background-color: #ffffff !important;
-        color: #0f172a !important;
+      .perspective-container {
+        perspective: 2000px;
       }
-      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+      .card-3d-entrance {
+        transform-style: preserve-3d;
+        animation: entrance3D 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes entrance3D {
+        0% { opacity: 0; transform: translateZ(-500px) rotateX(20deg); }
+        100% { opacity: 1; transform: translateZ(0) rotateX(0deg); }
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .mono { font-family: 'JetBrains Mono', monospace; }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
     </style>
     <script type="importmap">
 {

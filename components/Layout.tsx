@@ -1,51 +1,43 @@
 
 import React from 'react';
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
-
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-[#f8faff] flex flex-col items-center py-10 px-4 sm:px-6">
-      <div className="w-full max-w-6xl">
-        <header className="mb-14 text-center">
-          <div className="inline-flex items-center gap-4 mb-6">
-             <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-xl shadow-blue-200 flex items-center justify-center">
-               <i className="fa-solid fa-bolt-lightning text-2xl text-white"></i>
+    <div className="min-h-screen flex flex-col items-center py-8 px-4 sm:px-10">
+      <div className="w-full max-w-7xl">
+        <header className="mb-12 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-5">
+             <div className="w-14 h-14 bg-blue-600 rounded-2xl shadow-[0_0_30px_rgba(37,99,235,0.4)] flex items-center justify-center border border-white/10">
+               <i className="fa-solid fa-atom text-2xl text-white animate-spin-slow"></i>
              </div>
-             <div className="text-left">
-                <h1 className="text-4xl font-black text-gray-900 tracking-tight leading-none">
-                  LinguaFlow<span className="text-blue-600">Pro</span>
+             <div>
+                <h1 className="text-3xl font-black text-white tracking-tighter uppercase italic">
+                  LinguaFlow<span className="text-blue-500">Pro</span>
                 </h1>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Intelligence for Language</p>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em]">Personal AI Terminal</p>
              </div>
           </div>
-          <p className="text-xl text-gray-500 font-medium max-w-xl mx-auto leading-relaxed">
-            Instantly turn casual chat, Roman Urdu, or broken phrases into <span className="text-gray-900 font-bold border-b-2 border-blue-200">flawless professional prose.</span>
-          </p>
+          <div className="flex gap-4">
+            <div className="px-4 py-2 glass rounded-xl border-white/5 flex items-center gap-3">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Engine Active</span>
+            </div>
+          </div>
         </header>
 
-        <main className="relative z-10">
-          {children}
-        </main>
+        <main>{children}</main>
 
-        <footer className="mt-20 py-10 border-t border-gray-100 text-center">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-6">
-             <span className="text-gray-400 text-sm font-medium">Powered by Gemini 3 Flash</span>
-             <div className="hidden md:block w-1.5 h-1.5 bg-gray-200 rounded-full"></div>
-             <span className="text-gray-400 text-sm font-medium">Safe & Secure API</span>
-             <div className="hidden md:block w-1.5 h-1.5 bg-gray-200 rounded-full"></div>
-             <span className="text-gray-400 text-sm font-medium">Zero Data Storage</span>
-          </div>
-          <p className="text-gray-300 text-xs font-bold tracking-widest uppercase">&copy; {new Date().getFullYear()} LINGUAFLOW AUTOMATION ENGINE</p>
+        <footer className="mt-20 py-10 border-t border-white/5 text-center">
+          <p className="text-slate-400 text-sm font-bold tracking-widest uppercase">
+            &copy; {new Date().getFullYear()} LINGUAFLOW PRO ENGINE
+          </p>
         </footer>
       </div>
       
-      {/* Decorative elements */}
-      <div className="fixed top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 z-[100]"></div>
-      <div className="fixed -top-24 -left-24 w-96 h-96 bg-blue-100 rounded-full blur-[120px] opacity-40 pointer-events-none"></div>
-      <div className="fixed bottom-0 right-0 w-80 h-80 bg-indigo-100 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
+      <style>{`
+        .animate-spin-slow { animation: spin 8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 };
