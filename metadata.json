@@ -1,0 +1,7 @@
+{
+  "name": "LinguaFlow Pro",
+  "description": "An advanced AI Language Automation Engine that converts informal English and Roman Urdu into polished, professional English.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
