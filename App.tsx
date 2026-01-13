@@ -6,7 +6,7 @@ import { convertText, generateSpeech } from './services/geminiService';
 import { ToneType, ConversionRecord } from './types';
 import { Icons, MAX_CHARS } from './constants';
 
-// Helper functions for audio processing
+// PCM decoding for Gemini TTS
 function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -98,6 +98,9 @@ const App: React.FC = () => {
         console.error('Speech recognition error', event.error);
         setIsListening(false);
         setInterimTranscript('');
+        if (event.error === 'not-allowed') {
+          setError("Microphone access denied. Please check your browser permissions.");
+        }
       };
 
       recognitionRef.current.onend = () => {
@@ -111,7 +114,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Update recognition language when state changes
   useEffect(() => {
     if (recognitionRef.current) {
       recognitionRef.current.lang = recognitionLang;
@@ -124,6 +126,10 @@ const App: React.FC = () => {
 
   const handleConvert = async () => {
     if (!input.trim()) return;
+    if (!process.env.API_KEY) {
+      setError("API Key is missing. Please set the API_KEY environment variable in Vercel.");
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -162,13 +168,13 @@ const App: React.FC = () => {
       recognitionRef.current.stop();
     } else {
       setIsListening(true);
+      setError(null);
       recognitionRef.current.start();
     }
   };
 
   const handleSpeak = async () => {
     if (!output) return;
-    
     if (isSpeaking) {
       currentSourceRef.current?.stop();
       setIsSpeaking(false);
@@ -252,7 +258,7 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `polished_speech_${Date.now()}.wav`;
+      a.download = `linguaflow_speech_${Date.now()}.wav`;
       a.click();
     } catch (err) {
       setError("Download failed.");
@@ -271,39 +277,42 @@ const App: React.FC = () => {
 
   return (
     <Layout>
-      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-7xl mx-auto">
         
         {/* Sidebar for History */}
         <aside className="hidden lg:block lg:col-span-3 space-y-6 sticky top-8">
-           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm overflow-hidden backdrop-blur-xl bg-white/90">
-            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Icons.History /> History
+           <div className="bg-white rounded-[2rem] p-6 border border-slate-200/60 shadow-xl shadow-slate-200/20 overflow-hidden backdrop-blur-xl bg-white/95">
+            <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+              <Icons.History /> Activity
             </h2>
-            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
               {history.length > 0 ? history.map((item) => (
                 <div 
                   key={item.id}
                   onClick={() => useHistoryItem(item)}
-                  className="p-3 rounded-xl border border-transparent hover:border-blue-100 hover:bg-blue-50/50 transition-all cursor-pointer group"
+                  className="p-4 rounded-2xl border border-transparent hover:border-blue-100 hover:bg-blue-50/40 transition-all cursor-pointer group animate-fade-in"
                 >
-                  <div className="flex justify-between items-center mb-1">
-                    <p className="text-[10px] text-blue-600 font-bold uppercase">{item.tone}</p>
-                    <p className="text-[9px] text-gray-300">{new Date(item.timestamp).toLocaleDateString()}</p>
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[10px] text-blue-600 font-black uppercase tracking-tighter">{item.tone}</p>
+                    <p className="text-[9px] text-slate-300 font-bold">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
-                  <p className="text-xs text-gray-800 line-clamp-2 leading-tight">{item.output}</p>
+                  <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed font-medium">{item.output}</p>
                 </div>
               )) : (
-                <p className="text-xs text-gray-400 text-center py-8">No recent activity</p>
+                <div className="text-center py-12 opacity-30">
+                  <i className="fa-solid fa-ghost text-4xl mb-3 block"></i>
+                  <p className="text-xs font-bold uppercase tracking-widest">No history yet</p>
+                </div>
               )}
             </div>
            </div>
         </aside>
 
         {/* Mobile History Toggle */}
-        <div className="lg:hidden fixed bottom-6 right-6 z-50">
+        <div className="lg:hidden fixed bottom-6 right-6 z-[60]">
           <button 
             onClick={() => setShowHistory(true)}
-            className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+            className="w-16 h-16 bg-blue-600 text-white rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all ring-4 ring-white"
           >
             <Icons.History />
           </button>
@@ -311,24 +320,24 @@ const App: React.FC = () => {
 
         {/* Mobile History Drawer */}
         {showHistory && (
-          <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm lg:hidden flex justify-end">
-            <div className="w-[85%] max-w-sm bg-white h-full shadow-2xl p-6 flex flex-col animate-slide-in-right">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+          <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md lg:hidden flex justify-end">
+            <div className="w-[85%] max-w-sm bg-white h-full shadow-2xl p-8 flex flex-col animate-slide-in-right">
+              <div className="flex items-center justify-between mb-10">
+                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
                   <Icons.History /> History
                 </h2>
-                <button onClick={() => setShowHistory(false)} className="p-2 text-gray-400">
+                <button onClick={() => setShowHistory(false)} className="w-10 h-10 bg-slate-100 rounded-xl text-slate-400 flex items-center justify-center">
                   <Icons.Close />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-4">
+              <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar">
                 {history.map((item) => (
-                  <div key={item.id} onClick={() => useHistoryItem(item)} className="p-4 rounded-2xl bg-gray-50 active:bg-blue-50">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded uppercase">{item.tone}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                  <div key={item.id} onClick={() => useHistoryItem(item)} className="p-5 rounded-[1.5rem] bg-slate-50 active:bg-blue-50 transition-colors">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-3 py-1 rounded-full uppercase tracking-widest">{item.tone}</span>
+                      <span className="text-[10px] text-slate-400 font-bold">{new Date(item.timestamp).toLocaleTimeString()}</span>
                     </div>
-                    <p className="text-sm text-gray-800 line-clamp-3">{item.output}</p>
+                    <p className="text-sm text-slate-700 font-medium leading-relaxed line-clamp-3">{item.output}</p>
                   </div>
                 ))}
               </div>
@@ -337,69 +346,70 @@ const App: React.FC = () => {
         )}
 
         {/* Main Interface */}
-        <div className="lg:col-span-9 space-y-6">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-blue-900/10 p-6 md:p-12 border border-gray-100 relative overflow-hidden">
+        <div className="lg:col-span-9 space-y-8">
+          <div className="bg-white rounded-[3rem] shadow-2xl shadow-blue-900/10 p-6 md:p-14 border border-white/50 relative overflow-hidden ring-1 ring-slate-200/40">
             
-            {/* Background Detail */}
-            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-              <i className="fa-solid fa-language text-9xl text-slate-900"></i>
+            {/* Background Accent */}
+            <div className="absolute -top-10 -right-10 opacity-[0.03] pointer-events-none select-none">
+              <i className="fa-solid fa-wand-magic-sparkles text-[20rem] text-slate-900"></i>
             </div>
 
-            <div className="flex flex-col space-y-10">
+            <div className="flex flex-col space-y-12">
               
               {/* Input Section */}
               <div className="relative">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                  <label className="text-sm font-bold text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                    <Icons.Globe /> Source Text
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-6">
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
+                    <Icons.Globe /> Source Input
                   </label>
-                  <div className="flex items-center gap-2 sm:gap-4 bg-gray-50 p-1.5 rounded-2xl flex-wrap">
+                  <div className="flex items-center gap-2 sm:gap-4 bg-slate-100/80 p-2 rounded-[1.25rem] flex-wrap ring-1 ring-slate-200/50">
                     <select 
                       value={recognitionLang}
                       onChange={(e) => setRecognitionLang(e.target.value)}
-                      className="bg-transparent text-[10px] font-black uppercase text-gray-500 outline-none cursor-pointer border-r border-gray-200 pr-2"
-                      title="Recognition Language"
+                      className="bg-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer border border-slate-200 shadow-sm"
                     >
-                      <option value="en-US">English</option>
-                      <option value="ur-PK">Urdu</option>
-                      <option value="en-IN">Indian English</option>
+                      <option value="en-US">English (US)</option>
+                      <option value="ur-PK">Urdu (Pakistan)</option>
+                      <option value="en-IN">English (India)</option>
                     </select>
                     
                     <button 
                       onClick={toggleListening}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${isListening ? 'bg-red-500 text-white shadow-lg shadow-red-200 animate-pulse-gentle' : 'text-gray-600 hover:bg-white'}`}
+                      className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black transition-all transform active:scale-95 ${isListening ? 'bg-red-500 text-white shadow-lg shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 shadow-sm'}`}
                     >
                       <Icons.Microphone active={isListening} />
-                      {isListening ? 'Listening...' : 'Voice Input'}
+                      {isListening ? 'LISTENING...' : 'VOICE'}
                     </button>
-                    <div className="hidden sm:block h-4 w-px bg-gray-200"></div>
-                    <span className={`px-2 text-[10px] font-black tracking-widest ${input.length > MAX_CHARS * 0.9 ? 'text-orange-500' : 'text-gray-400'}`}>
-                      {input.length} / {MAX_CHARS}
+                    <div className="hidden sm:block h-5 w-px bg-slate-200"></div>
+                    <span className={`px-3 text-[10px] font-black tracking-[0.1em] ${input.length > MAX_CHARS * 0.9 ? 'text-orange-500' : 'text-slate-400'}`}>
+                      {input.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
                     </span>
                   </div>
                 </div>
+                
                 <div className="relative group">
                   <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value.slice(0, MAX_CHARS))}
-                    placeholder="Enter informal English or Roman Urdu... (e.g., 'Yaar meeting kab hai?' or 'send it over asap')"
-                    className="w-full min-h-[200px] p-8 rounded-[2rem] bg-gray-50/50 border-2 border-transparent focus:bg-white focus:border-blue-400/30 focus:ring-8 focus:ring-blue-50 outline-none transition-all duration-500 text-xl leading-relaxed resize-none shadow-inner group-hover:bg-white/80 text-slate-900 font-medium"
+                    placeholder="E.g., 'Yaar meeting 5 baje hogi?' or 'Can u check this file asap?'"
+                    className="w-full min-h-[220px] p-10 rounded-[2.5rem] bg-slate-50/50 border-2 border-transparent focus:bg-white focus:border-blue-500/20 focus:ring-[1rem] focus:ring-blue-500/5 outline-none transition-all duration-500 text-2xl leading-relaxed resize-none shadow-inner group-hover:bg-white/80 text-slate-900 font-semibold placeholder:text-slate-300"
                     maxLength={MAX_CHARS}
-                    style={{ color: '#0f172a' }} // Forced deep slate color
+                    spellCheck={false}
+                    style={{ color: '#0f172a', caretColor: '#2563eb' }}
                   />
                   
                   {/* Real-time Transcription Feedback */}
                   {isListening && interimTranscript && (
-                    <div className="absolute bottom-6 left-8 right-16 p-3 bg-blue-600/90 text-white rounded-xl text-sm italic backdrop-blur-sm animate-fade-in shadow-xl">
-                      <span className="opacity-70 mr-2 text-[10px] font-black uppercase">Live:</span>
-                      {interimTranscript}
+                    <div className="absolute bottom-8 left-10 right-10 p-5 bg-blue-600 text-white rounded-[1.5rem] text-lg font-medium italic backdrop-blur-xl shadow-2xl animate-fade-in z-20 flex items-center gap-4">
+                      <div className="w-2 h-2 bg-white rounded-full animate-ping shrink-0"></div>
+                      <span className="line-clamp-1">{interimTranscript}</span>
                     </div>
                   )}
 
                   {input && (
                     <button 
                       onClick={() => setInput('')}
-                      className="absolute top-6 right-6 w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-full text-gray-400 hover:text-red-500 flex items-center justify-center transition-all hover:scale-110 z-10"
+                      className="absolute top-8 right-8 w-12 h-12 bg-white shadow-md border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-30"
                     >
                       <Icons.Close />
                     </button>
@@ -408,36 +418,36 @@ const App: React.FC = () => {
               </div>
 
               {/* Tone Selection */}
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">Target Polish</label>
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-3 py-1 rounded-full">
-                    <Icons.Info /> AI Selection
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Target Polish</label>
+                  <div className="flex items-center gap-2 text-[10px] font-black text-blue-500 bg-blue-50 px-4 py-1.5 rounded-full border border-blue-100">
+                    <Icons.Info /> AI ASSISTED
                   </div>
                 </div>
                 <ToneSelector selectedTone={tone} onSelect={setTone} />
               </div>
 
               {/* Action Button */}
-              <div className="flex justify-center pt-4">
+              <div className="flex justify-center pt-6">
                 <button
                   onClick={handleConvert}
                   disabled={isLoading || !input.trim()}
-                  className={`group relative overflow-hidden px-14 py-6 rounded-[1.5rem] font-black text-xl flex items-center justify-center gap-5 transition-all duration-500 transform ${
+                  className={`group relative overflow-hidden px-16 py-7 rounded-[2rem] font-black text-2xl flex items-center justify-center gap-6 transition-all duration-500 transform active:scale-95 ${
                     isLoading || !input.trim()
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.03] shadow-[0_20px_50px_-15px_rgba(37,99,235,0.4)] active:scale-95'
+                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-inner'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.02] shadow-[0_30px_60px_-15px_rgba(37,99,235,0.45)]'
                   }`}
                 >
                   {isLoading ? (
                     <>
-                      <div className="w-6 h-6 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
-                      Processing...
+                      <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+                      POLISHING...
                     </>
                   ) : (
                     <>
-                      Transform Text
-                      <div className="bg-white/20 p-2 rounded-xl group-hover:translate-x-1 transition-transform">
+                      Refine Now
+                      <div className="bg-white/10 p-3 rounded-2xl group-hover:translate-x-2 transition-transform duration-500">
                         <Icons.ArrowRight />
                       </div>
                     </>
@@ -447,85 +457,83 @@ const App: React.FC = () => {
 
               {/* Error State */}
               {error && (
-                <div className="p-6 bg-red-50 border-2 border-red-100 rounded-3xl text-red-600 font-bold flex items-center gap-4 animate-shake">
-                  <div className="bg-red-100 p-3 rounded-2xl">
-                    <i className="fa-solid fa-triangle-exclamation text-xl"></i>
+                <div className="p-8 bg-red-50 border-2 border-red-100 rounded-[2rem] text-red-600 font-bold flex items-center gap-6 animate-shake shadow-lg shadow-red-100/50">
+                  <div className="bg-white p-4 rounded-2xl shadow-sm text-red-500">
+                    <i className="fa-solid fa-circle-exclamation text-2xl"></i>
                   </div>
                   <div>
-                    <p className="text-sm uppercase tracking-wider mb-0.5">Application Error</p>
-                    <p className="text-xs font-medium opacity-80">{error}</p>
+                    <p className="text-xs uppercase tracking-widest mb-1 opacity-60">System Notification</p>
+                    <p className="text-lg font-black leading-tight">{error}</p>
                   </div>
                 </div>
               )}
 
               {/* Result Section */}
               {(output || isLoading) && (
-                <div className={`space-y-6 pt-6 animate-fade-in`}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-4 gap-4">
-                    <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
-                      <label className="text-sm font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                <div className="space-y-8 pt-10 animate-fade-in border-t border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                    <div className="flex items-center gap-5 flex-wrap">
+                      <label className="text-xs font-black text-blue-600 uppercase tracking-[0.3em] flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl">
                         <Icons.Sparkles /> Polished Result
                       </label>
                       <button 
                         onClick={() => setCompareMode(!compareMode)}
-                        className={`text-[10px] font-black uppercase px-3 py-1 rounded-full transition-all flex items-center gap-2 ${compareMode ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'bg-gray-100 text-gray-400 hover:bg-blue-50 hover:text-blue-600'}`}
+                        className={`text-[10px] font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 border ${compareMode ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-blue-400 hover:text-blue-600'}`}
                       >
-                        <Icons.Compare /> {compareMode ? 'Standard View' : 'Compare Mode'}
+                        <Icons.Compare /> {compareMode ? 'SOLO VIEW' : 'COMPARE'}
                       </button>
                     </div>
                     
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <div className="flex items-center gap-3 self-end sm:self-auto">
                       <button
                         onClick={handleDownloadAudio}
-                        title="Download as WAV"
-                        className="p-3 bg-gray-50 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"
+                        title="Download WAV"
+                        className="w-12 h-12 bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-white border border-transparent hover:border-blue-200 rounded-2xl transition-all flex items-center justify-center shadow-sm"
                       >
                         <Icons.Download />
                       </button>
                       <button
                         onClick={handleSpeak}
-                        title="High Quality Read Aloud"
+                        title="Read Aloud"
                         disabled={isAudioLoading}
-                        className={`p-3 rounded-2xl transition-all ${isSpeaking ? 'bg-blue-100 text-blue-600 ring-2 ring-blue-200' : 'bg-gray-50 text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                        className={`w-12 h-12 rounded-2xl transition-all border flex items-center justify-center shadow-sm ${isSpeaking ? 'bg-blue-600 text-white border-blue-600 animate-pulse' : 'bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-white border-transparent hover:border-blue-200'}`}
                       >
                         <Icons.Speaker active={isSpeaking} loading={isAudioLoading} />
                       </button>
-                      <div className="h-6 w-px bg-gray-100 mx-2"></div>
+                      <div className="h-8 w-px bg-slate-200 mx-2"></div>
                       <button
                         onClick={() => handleCopy(output)}
-                        className={`px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
-                          copied ? 'bg-green-500 text-white shadow-lg shadow-green-100' : 'bg-gray-900 text-white hover:bg-blue-600 active:scale-95'
+                        className={`px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 ${
+                          copied ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'bg-slate-900 text-white hover:bg-blue-600 shadow-xl shadow-slate-200'
                         }`}
                       >
-                        {copied ? 'Copied!' : 'Copy Text'}
+                        {copied ? 'COPIED!' : 'COPY TEXT'}
                       </button>
                     </div>
                   </div>
 
                   {compareMode ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-6 rounded-3xl bg-gray-50 border border-gray-100">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Original</p>
-                        <p className="text-gray-500 italic text-lg leading-relaxed">{input}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="p-10 rounded-[2.5rem] bg-slate-50 border border-slate-200 shadow-inner group">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-200 pb-2">Draft</p>
+                        <p className="text-slate-500 italic text-xl leading-relaxed font-medium">{input}</p>
                       </div>
-                      <div className="p-6 rounded-3xl bg-blue-50 border border-blue-100">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">Refined</p>
-                        <p className="text-slate-900 text-lg leading-relaxed font-medium">{output}</p>
+                      <div className="p-10 rounded-[2.5rem] bg-white border-2 border-blue-100 shadow-2xl shadow-blue-100/50">
+                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-6 border-b border-blue-100 pb-2">Refined</p>
+                        <p className="text-slate-900 text-xl leading-relaxed font-bold">{output}</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="relative group">
-                      <div className="w-full min-h-[160px] p-10 rounded-[2.5rem] bg-gradient-to-br from-blue-50/50 to-indigo-50/50 border-2 border-blue-100 text-slate-900 text-2xl leading-[1.6] shadow-sm selection:bg-blue-200 font-medium">
-                        {isLoading ? (
-                          <div className="space-y-6">
-                            <div className="h-6 bg-blue-100/40 rounded-full w-11/12 animate-pulse"></div>
-                            <div className="h-6 bg-blue-100/40 rounded-full w-full animate-pulse"></div>
-                            <div className="h-6 bg-blue-100/40 rounded-full w-3/4 animate-pulse"></div>
-                          </div>
-                        ) : (
-                          output
-                        )}
-                      </div>
+                    <div className="w-full min-h-[180px] p-12 rounded-[3rem] bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-100 text-slate-900 text-2xl leading-[1.6] shadow-xl shadow-blue-50 font-bold selection:bg-blue-200">
+                      {isLoading ? (
+                        <div className="space-y-6">
+                          <div className="h-8 bg-blue-100/50 rounded-full w-11/12 animate-pulse"></div>
+                          <div className="h-8 bg-blue-100/50 rounded-full w-full animate-pulse"></div>
+                          <div className="h-8 bg-blue-100/50 rounded-full w-4/5 animate-pulse"></div>
+                        </div>
+                      ) : (
+                        output
+                      )}
                     </div>
                   )}
                 </div>
@@ -533,33 +541,33 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* New Advanced Features Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
-               <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-6 group-hover:scale-110 transition-transform">
-                 <i className="fa-solid fa-microphone-lines text-xl"></i>
+          {/* Value Props Section */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group">
+               <div className="w-16 h-16 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 mb-8 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
+                 <i className="fa-solid fa-microphone-lines text-2xl"></i>
                </div>
-               <h3 className="font-black text-gray-900 mb-3 tracking-tight">Audio Capture</h3>
-               <p className="text-sm text-gray-400 leading-relaxed font-medium">
-                 Integrated multi-lingual recognition for English & Urdu speech patterns.
+               <h3 className="font-black text-xl text-slate-900 mb-4 tracking-tight">Audio Capture</h3>
+               <p className="text-slate-500 leading-relaxed font-medium">
+                 High-fidelity recognition for English and Urdu dialects. Just speak naturally.
                </p>
             </div>
-            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
-               <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 mb-6 group-hover:scale-110 transition-transform">
-                 <i className="fa-solid fa-brain text-xl"></i>
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group">
+               <div className="w-16 h-16 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-600 mb-8 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
+                 <i className="fa-solid fa-shield-halved text-2xl"></i>
                </div>
-               <h3 className="font-black text-gray-900 mb-3 tracking-tight">Smart Context</h3>
-               <p className="text-sm text-gray-400 leading-relaxed font-medium">
-                 Detects intent and preserves emotional nuance while fixing technical grammar errors.
+               <h3 className="font-black text-xl text-slate-900 mb-4 tracking-tight">Enterprise Privacy</h3>
+               <p className="text-slate-500 leading-relaxed font-medium">
+                 Secure API processing. Your professional communication remains private and protected.
                </p>
             </div>
-            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
-               <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 mb-6 group-hover:scale-110 transition-transform">
-                 <i className="fa-solid fa-file-export text-xl"></i>
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group">
+               <div className="w-16 h-16 bg-purple-50 rounded-3xl flex items-center justify-center text-purple-600 mb-8 group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all duration-500">
+                 <i className="fa-solid fa-bolt text-2xl"></i>
                </div>
-               <h3 className="font-black text-gray-900 mb-3 tracking-tight">Export Suite</h3>
-               <p className="text-sm text-gray-400 leading-relaxed font-medium">
-                 High-fidelity WAV audio export and one-tap clipboard distribution for professional use.
+               <h3 className="font-black text-xl text-slate-900 mb-4 tracking-tight">Instant Export</h3>
+               <p className="text-slate-500 leading-relaxed font-medium">
+                 Export text to clipboard or high-quality WAV audio with a single tap.
                </p>
             </div>
           </div>
@@ -572,28 +580,17 @@ const App: React.FC = () => {
           to { transform: translateX(0); }
         }
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(30px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-8px); }
-          75% { transform: translateX(8px); }
+          25% { transform: translateX(-10px); }
+          75% { transform: translateX(10px); }
         }
-        @keyframes pulse-gentle {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.8; transform: scale(1.05); }
-        }
-        .animate-slide-in-right { animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        .animate-fade-in { animation: fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+        .animate-slide-in-right { animation: slide-in-right 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        .animate-fade-in { animation: fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-shake { animation: shake 0.4s ease-in-out; }
-        .animate-pulse-gentle { animation: pulse-gentle 2s ease-in-out infinite; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        textarea::placeholder { color: #94a3b8; font-weight: 400; }
-        textarea { color: #0f172a !important; } /* Force deep slate color */
       `}</style>
     </Layout>
   );
