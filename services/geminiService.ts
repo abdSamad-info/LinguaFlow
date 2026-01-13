@@ -4,11 +4,8 @@ import { SYSTEM_INSTRUCTION } from "../constants";
 import { ToneType } from "../types";
 
 export const convertText = async (input: string, tone: ToneType): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found. Please ensure it is configured.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Rely on the environment to provide the API_KEY as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const prompt = `Tone: ${tone}\n\nInput text to convert:\n${input}`;
 
   try {
@@ -28,18 +25,17 @@ export const convertText = async (input: string, tone: ToneType): Promise<string
     }
 
     return response.text.trim();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini API Error:", error);
+    if (error.message?.includes('API_KEY_INVALID') || error.status === 403) {
+      throw new Error("Invalid API Key. Please check your Vercel environment variables.");
+    }
     throw error;
   }
 };
 
 export const generateSpeech = async (text: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   try {
     const response = await ai.models.generateContent({
@@ -49,7 +45,7 @@ export const generateSpeech = async (text: string): Promise<string> => {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' }, // Professional male/neutral voice
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
           },
         },
       },
@@ -57,7 +53,7 @@ export const generateSpeech = async (text: string): Promise<string> => {
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) {
-      throw new Error("No audio data received from Gemini.");
+      throw new Error("No audio data received.");
     }
     return base64Audio;
   } catch (error) {
