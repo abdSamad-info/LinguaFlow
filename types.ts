@@ -1,5 +1,5 @@
 
-export type ToneType = 'Professional' | 'Formal' | 'Business' | 'Academic' | 'Friendly';
+export type ToneType = 'Normal' | 'Moderate' | 'Fluent' | 'High-Level' | 'Professional' | 'Creative';
 
 export interface ConversionRecord {
   id: string;

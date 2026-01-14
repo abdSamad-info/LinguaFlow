@@ -1,61 +1,53 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import ToneSelector from './components/ToneSelector';
-import { convertText, generateSpeech, getSmartVariations } from './services/geminiService';
+import { convertText, getSmartVariations } from './services/geminiService';
 import { ToneType, ConversionRecord } from './types';
-import { Icons, MAX_CHARS } from './constants';
-
-// PCM decoding helpers for Gemini TTS
-const decodeBase64 = (base64: string) => {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-  return bytes;
-};
-
-const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-  }
-  return buffer;
-};
+import { Icons, MAX_CHARS, FONT_OPTIONS, RADIUS_OPTIONS, BLUR_OPTIONS, ACCENT_COLORS } from './constants';
 
 const App: React.FC = () => {
+  // Core State
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [variations, setVariations] = useState<string[]>([]);
-  const [tone, setTone] = useState<ToneType>('Professional');
+  const [tone, setTone] = useState<ToneType>('Normal');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isVariationsLoading, setIsVariationsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isAudioLoading, setIsAudioLoading] = useState(false);
-  const [history, setHistory] = useState<ConversionRecord[]>([]);
-  const [compareMode, setCompareMode] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
 
+  // UI State
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [history, setHistory] = useState<ConversionRecord[]>([]);
+  
+  // Design Preferences (Persisted)
+  const [accentColor, setAccentColor] = useState(ACCENT_COLORS[0]); 
+  const [fontFamily, setFontFamily] = useState(FONT_OPTIONS[0].family);
+  const [borderRadius, setBorderRadius] = useState(RADIUS_OPTIONS[2].value);
+  const [blurLevel, setBlurLevel] = useState(BLUR_OPTIONS[1].value);
+
   const recognitionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
-  // Stats Analytics
-  const stats = useMemo(() => ({
-    words: input.trim() ? input.trim().split(/\s+/).length : 0,
-    time: Math.ceil((input.length / 5) / 200 * 60) || 0,
-    clarity: output ? Math.min(98, 70 + (output.length / 20)) : 0
-  }), [input, output]);
-
+  // Initialize from LocalStorage
   useEffect(() => {
-    // Load History
-    const saved = localStorage.getItem('linguaflow_history');
-    if (saved) setHistory(JSON.parse(saved));
+    const savedHistory = localStorage.getItem('linguaflow_history_v2');
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+    
+    const savedTheme = localStorage.getItem('linguaflow_theme');
+    if (savedTheme) setAccentColor(savedTheme);
 
-    // Initialize Speech Recognition
+    const savedFont = localStorage.getItem('linguaflow_font');
+    if (savedFont) setFontFamily(savedFont);
+
+    const savedRadius = localStorage.getItem('linguaflow_radius');
+    if (savedRadius) setBorderRadius(savedRadius);
+
+    const savedBlur = localStorage.getItem('linguaflow_blur');
+    if (savedBlur) setBlurLevel(savedBlur);
+
+    // Speech Recognition Setup
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
@@ -74,13 +66,52 @@ const App: React.FC = () => {
         } else setInterimTranscript(interimStr);
       };
       recognitionRef.current.onend = () => setIsListening(false);
-      recognitionRef.current.onerror = () => setIsListening(false);
     }
   }, []);
 
+  // Save to LocalStorage
   useEffect(() => {
-    localStorage.setItem('linguaflow_history', JSON.stringify(history.slice(0, 15)));
-  }, [history]);
+    localStorage.setItem('linguaflow_history_v2', JSON.stringify(history));
+    localStorage.setItem('linguaflow_theme', accentColor);
+    localStorage.setItem('linguaflow_font', fontFamily);
+    localStorage.setItem('linguaflow_radius', borderRadius);
+    localStorage.setItem('linguaflow_blur', blurLevel);
+  }, [history, accentColor, fontFamily, borderRadius, blurLevel]);
+
+  const handleConvert = async () => {
+    if (!input.trim()) return;
+    setIsLoading(true);
+    setVariations([]);
+    try {
+      const result = await convertText(input, tone);
+      setOutput(result);
+      
+      // Auto-fetch variants
+      setIsVariationsLoading(true);
+      const variants = await getSmartVariations(result);
+      setVariations(variants);
+      
+      setHistory(prev => [{
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        input,
+        output: result,
+        tone
+      }, ...prev].slice(0, 50));
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+      setIsVariationsLoading(false);
+    }
+  };
+
+  const clearAll = () => {
+    setInput('');
+    setOutput('');
+    setVariations([]);
+    setInterimTranscript('');
+  };
 
   const toggleListening = () => {
     if (!recognitionRef.current) return;
@@ -91,208 +122,302 @@ const App: React.FC = () => {
     }
   };
 
-  const handleConvert = async () => {
-    if (!input.trim()) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await convertText(input, tone);
-      setOutput(result);
-      getSmartVariations(result).then(setVariations);
-      setHistory(prev => [{ id: Date.now().toString(), timestamp: Date.now(), input, output: result, tone }, ...prev].slice(0, 15));
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
-  const handleSpeak = async () => {
-    if (!output || isSpeaking) {
-      currentSourceRef.current?.stop();
-      setIsSpeaking(false);
-      return;
-    }
-    setIsAudioLoading(true);
-    try {
-      const base64 = await generateSpeech(output);
-      if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      const ctx = audioContextRef.current;
-      const buffer = await decodeAudioData(decodeBase64(base64), ctx, 24000, 1);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      currentSourceRef.current = source;
-      source.onended = () => setIsSpeaking(false);
-      source.start();
-      setIsSpeaking(true);
-    } catch { setError("Speech engine failed."); } finally { setIsAudioLoading(false); }
+  const selectVariation = (variantText: string) => {
+    const oldMain = output;
+    setOutput(variantText);
+    setVariations(prev => prev.map(v => v === variantText ? oldMain : v));
   };
 
-  const handleDownload = (type: 'text' | 'audio') => {
-    if (type === 'text') {
-      const blob = new Blob([output], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Polished_Text_${Date.now()}.txt`;
-      a.click();
-    }
-    // Audio download logic simplified for this demo context
+  const exportHistory = () => {
+    const dataStr = JSON.stringify(history, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = 'linguaflow_history.json';
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
   };
-
-  const handleCopy = (text: string) => navigator.clipboard.writeText(text);
 
   return (
-    <Layout>
-      <div className="perspective-container">
-        <div className="card-3d-entrance grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
-          
-          {/* Main Input/Output Cluster */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="glass rounded-[2.5rem] p-8 border-white/10 relative">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <button onClick={toggleListening} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isListening ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,44,44,0.4)]' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}>
-                    <Icons.Microphone active={isListening} />
-                  </button>
-                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Command Input</span>
-                </div>
-                <div className="flex gap-4 items-center">
-                  <span className="mono text-[10px] text-blue-400">{stats.words} WORDS</span>
-                  <button onClick={() => setInput('')} className="text-slate-600 hover:text-red-400 transition-colors"><Icons.Close /></button>
-                </div>
-              </div>
+    <Layout 
+      accentColor={accentColor} 
+      fontFamily={fontFamily} 
+      borderRadius={borderRadius} 
+      blurLevel={blurLevel}
+    >
+      <div className="space-y-6 md:space-y-10 max-w-5xl mx-auto">
+        
+        {/* Actions Bar */}
+        <div className="flex justify-between items-center px-2">
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setShowHistory(true)}
+              className="px-5 py-2.5 glass text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-white transition-all flex items-center gap-3 border-white/5"
+            >
+              <Icons.Vault /> <span className="hidden sm:inline">History</span>
+            </button>
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="px-5 py-2.5 glass text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-white transition-all flex items-center gap-3 border-white/5"
+            >
+              <Icons.Settings /> <span className="hidden sm:inline">Settings</span>
+            </button>
+          </div>
+          <button 
+            onClick={clearAll}
+            className="px-5 py-2.5 glass text-[10px] font-black uppercase tracking-[0.2em] text-red-500 hover:bg-red-500/10 transition-all flex items-center gap-3 border-white/5"
+          >
+            <Icons.Trash /> <span className="hidden sm:inline">Clear</span>
+          </button>
+        </div>
 
-              <div className="relative">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value.slice(0, MAX_CHARS))}
-                  placeholder="Type or use Voice to enter text..."
-                  className="w-full min-h-[220px] bg-transparent border-none outline-none text-2xl font-medium leading-relaxed text-white placeholder:text-slate-700 resize-none custom-scrollbar"
-                />
-                {isListening && interimTranscript && (
-                  <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm rounded-2xl flex items-center justify-center p-8 text-center animate-pulse">
-                    <p className="text-xl italic text-blue-300">"{interimTranscript}..."</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-white/5 pt-8">
-                <ToneSelector selectedTone={tone} onSelect={setTone} />
-                <button
-                  onClick={handleConvert}
-                  disabled={isLoading || !input.trim()}
-                  className="px-12 py-5 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-[0_0_40px_rgba(37,99,235,0.3)] hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-50"
-                >
-                  {isLoading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <Icons.Sparkles />}
-                  {isLoading ? "PROCESING" : "POLISH CONTENT"}
-                </button>
-              </div>
+        <div className="grid grid-cols-1 gap-8">
+          {/* Input Area */}
+          <div className="glass p-6 sm:p-10 relative overflow-hidden group">
+            <div 
+              className="absolute top-0 left-0 w-1 h-full transition-all duration-500"
+              style={{ backgroundColor: accentColor }}
+            />
+            <div className="flex justify-between items-center mb-8">
+              <span className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-3">
+                <Icons.Globe /> Neural Processing
+              </span>
+              <button 
+                onClick={toggleListening}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-lg ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+              >
+                <Icons.Microphone active={isListening} />
+              </button>
             </div>
-
-            {output && (
-              <div className={`glass rounded-[2.5rem] p-10 border-blue-500/20 shadow-2xl animate-fade-in ${compareMode ? 'ring-2 ring-blue-500/40' : ''}`}>
-                <div className="flex justify-between items-center mb-8">
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-3">
-                      <Icons.Pulse />
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Refined Result</span>
-                    </div>
-                    <button 
-                      onClick={() => setCompareMode(!compareMode)} 
-                      className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${compareMode ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-500'}`}
-                    >
-                      Compare View
-                    </button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleSpeak} className={`w-11 h-11 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors ${isSpeaking ? 'bg-blue-600' : ''}`}>
-                      <Icons.Speaker active={isSpeaking} loading={isAudioLoading} />
-                    </button>
-                    <button onClick={() => handleDownload('text')} className="w-11 h-11 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors"><Icons.Download /></button>
-                    <button onClick={() => handleCopy(output)} className="px-6 py-3 glass text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600">Copy</button>
-                  </div>
-                </div>
-
-                {compareMode ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
-                    <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-slate-600 uppercase">Original</h4>
-                      <p className="text-lg text-slate-500 leading-relaxed italic">{input}</p>
-                    </div>
-                    <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-blue-400 uppercase">Polished</h4>
-                      <p className="text-2xl font-bold text-white leading-tight">{output}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-3xl font-bold text-white leading-tight mb-8 animate-fade-in">{output}</p>
-                )}
-
-                {variations.length > 0 && !compareMode && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/5 pt-8 mt-4">
-                    {['Concise', 'Elegant', 'Assertive'].map((label, idx) => (
-                      <div key={idx} className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all group" onClick={() => setOutput(variations[idx])}>
-                        <p className="text-[9px] font-black uppercase text-slate-500 mb-2 group-hover:text-blue-400">{label}</p>
-                        <p className="text-xs text-slate-400 line-clamp-2 italic font-medium">{variations[idx]}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Paste text or speak to refine..."
+              className="w-full min-h-[180px] sm:min-h-[250px] bg-transparent border-none outline-none text-2xl sm:text-3xl font-bold text-white placeholder:text-slate-800 resize-none custom-scrollbar leading-relaxed"
+            />
+            
+            {isListening && interimTranscript && (
+              <div className="absolute inset-x-10 bottom-32 p-5 glass text-blue-400 text-lg italic animate-pulse border-blue-500/20">
+                "{interimTranscript}..."
               </div>
             )}
+            
+            <div className="mt-8 flex flex-col lg:flex-row items-center justify-between gap-6 pt-8 border-t border-white/5">
+              <ToneSelector selectedTone={tone} onSelect={setTone} />
+              <button
+                onClick={handleConvert}
+                disabled={isLoading || !input.trim()}
+                className="w-full lg:w-auto px-12 py-5 font-black text-[11px] uppercase tracking-[0.3em] transition-all shadow-2xl disabled:opacity-20 flex items-center justify-center gap-4 group hover:scale-[1.02] active:scale-[0.98]"
+                style={{ 
+                  backgroundColor: accentColor, 
+                  color: 'white', 
+                  boxShadow: `0 15px 45px -15px ${accentColor}`,
+                  borderRadius: borderRadius
+                }}
+              >
+                {isLoading ? <i className="fa-solid fa-sync fa-spin"></i> : <Icons.Sparkles />}
+                {isLoading ? 'Translating' : 'Execute Polish'}
+              </button>
+            </div>
           </div>
 
-          {/* Right Panel: Data Lab */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="glass rounded-[2rem] p-6">
-               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">
-                 <Icons.Chart /> Intelligence Feed
-               </h3>
-               <div className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                    <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-3">
-                      <span>CLARITY SCORE</span>
-                      <span className="text-blue-400">{Math.round(stats.clarity)}%</span>
-                    </div>
-                    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${stats.clarity}%` }}></div>
-                    </div>
+          {/* Results Area */}
+          {output && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="glass p-8 sm:p-12 border-white/10 relative shadow-2xl">
+                <div className="flex justify-between items-center mb-10">
+                  <div className="flex items-center gap-4">
+                    <Icons.Pulse />
+                    <span className="text-[11px] font-black uppercase tracking-[0.3em]" style={{ color: accentColor }}>Refinement Record</span>
                   </div>
-                  <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                    <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-3">
-                      <span>ENGAGEMENT</span>
-                      <span className="text-emerald-400">HIGH</span>
-                    </div>
-                  </div>
-               </div>
-            </div>
-
-            <div className="glass rounded-[2rem] p-6 h-[460px] flex flex-col">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">
-                 <Icons.History /> Session Activity
-              </h3>
-              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
-                {history.length > 0 ? history.map(item => (
-                  <div key={item.id} onClick={() => {setInput(item.input); setOutput(item.output)}} className="p-4 rounded-xl hover:bg-white/10 border border-transparent hover:border-white/5 transition-all cursor-pointer group">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[8px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded uppercase">{item.tone}</span>
-                      <span className="text-[8px] text-slate-600">{new Date(item.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">{item.output}</p>
-                  </div>
-                )) : (
-                  <div className="h-full flex items-center justify-center opacity-20 flex-col gap-4">
-                    <i className="fa-solid fa-ghost text-4xl"></i>
-                    <p className="text-[10px] font-bold uppercase tracking-widest">Empty Void</p>
-                  </div>
-                )}
+                  <button onClick={() => copyToClipboard(output)} className="p-4 glass rounded-2xl hover:bg-white/10 text-slate-400 hover:text-white transition-all border-white/5">
+                    <Icons.Copy />
+                  </button>
+                </div>
+                <p className="text-3xl sm:text-5xl font-bold text-white leading-[1.2] mb-4">
+                  {output}
+                </p>
               </div>
+
+              {/* Variations */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 px-4">
+                  <Icons.Variant />
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Synthetic Variations</span>
+                  {isVariationsLoading && <i className="fa-solid fa-circle-notch fa-spin text-xs text-slate-600"></i>}
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {variations.length > 0 ? variations.map((variant, idx) => (
+                    <div 
+                      key={idx}
+                      onClick={() => selectVariation(variant)}
+                      className="glass p-6 cursor-pointer group hover:border-white/20 transition-all border-white/5"
+                    >
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Variation {idx + 1}</span>
+                        <div className="w-2 h-2 rounded-full transition-colors" style={{ backgroundColor: accentColor + '33' }}></div>
+                      </div>
+                      <p className="text-sm text-slate-400 group-hover:text-white transition-colors leading-relaxed line-clamp-4">
+                        {variant}
+                      </p>
+                    </div>
+                  )) : !isVariationsLoading && (
+                    <div className="col-span-full py-6 text-center opacity-20 text-[10px] font-bold uppercase tracking-widest">
+                      Generating synthetic alternatives...
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-slate-950/90 backdrop-blur-xl">
+          <div className="glass w-full max-w-3xl p-8 sm:p-12 max-h-[85vh] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] border-white/5">
+            <div className="flex justify-between items-center mb-10">
+              <h2 className="text-lg font-black uppercase tracking-[0.3em] text-white flex items-center gap-5">
+                <Icons.Vault /> Engine Archive
+              </h2>
+              <div className="flex gap-4">
+                 <button onClick={exportHistory} className="p-4 glass rounded-2xl text-slate-400 hover:text-white transition-all"><Icons.Download /></button>
+                 <button onClick={() => setShowHistory(false)} className="w-12 h-12 glass flex items-center justify-center text-slate-400 hover:text-white transition-all"><Icons.Close /></button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pr-4">
+              {history.length > 0 ? history.map(item => (
+                <div key={item.id} className="p-6 bg-white/5 border border-white/5 hover:border-white/20 transition-all group relative overflow-hidden glass">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-white/5 text-slate-400">{item.tone}</span>
+                    <span className="text-[10px] text-slate-600 font-mono">{new Date(item.timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-4 line-clamp-1 italic">"{item.input}"</p>
+                  <p className="text-lg text-white font-bold leading-snug">{item.output}</p>
+                  <button 
+                    onClick={() => {setInput(item.input); setOutput(item.output); setShowHistory(false)}}
+                    className="mt-6 px-6 py-2.5 bg-white/5 text-[10px] font-black uppercase tracking-widest text-slate-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-white/10 hover:text-white"
+                    style={{ borderRadius: 'calc(var(--radius) / 2)' }}
+                  >
+                    Restore Workspace
+                  </button>
+                </div>
+              )) : (
+                <div className="text-center py-20 opacity-20">
+                   <Icons.Vault />
+                   <p className="text-[11px] font-black mt-6 uppercase tracking-[0.3em]">No records archived</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Design Console */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
+          <div className="glass w-full max-w-md p-10 border-white/5 shadow-2xl">
+            <div className="flex justify-between items-center mb-10">
+              <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white flex items-center gap-4">
+                <Icons.Settings /> Design Console
+              </h2>
+              <button onClick={() => setShowSettings(false)} className="w-10 h-10 glass flex items-center justify-center text-slate-400 hover:text-white transition-all"><Icons.Close /></button>
+            </div>
+            
+            <div className="space-y-8 h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+              {/* Theme Colors */}
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] block mb-4">Core Accents</label>
+                <div className="grid grid-cols-5 gap-3">
+                  {ACCENT_COLORS.map(color => (
+                    <button 
+                      key={color} 
+                      onClick={() => setAccentColor(color)}
+                      className={`h-10 rounded-xl transition-all duration-300 ${accentColor === color ? 'ring-2 ring-white ring-offset-4 ring-offset-slate-950 scale-110' : 'opacity-40 hover:opacity-100'}`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Typography */}
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] block mb-4 flex items-center gap-2">
+                  <Icons.Font /> Typography
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  {FONT_OPTIONS.map(font => (
+                    <button 
+                      key={font.name}
+                      onClick={() => setFontFamily(font.family)}
+                      className={`px-5 py-4 text-left glass border transition-all flex items-center justify-between group ${fontFamily === font.family ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 opacity-60 hover:opacity-100'}`}
+                    >
+                      <span className="text-sm font-bold text-white" style={{ fontFamily: font.family }}>{font.name}</span>
+                      {fontFamily === font.family && <Icons.Check />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Border Radius */}
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] block mb-4 flex items-center gap-2">
+                  <Icons.Shape /> Interface Shape
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {RADIUS_OPTIONS.map(opt => (
+                    <button 
+                      key={opt.name}
+                      onClick={() => setBorderRadius(opt.value)}
+                      className={`py-3 text-[10px] font-black uppercase tracking-widest glass border transition-all ${borderRadius === opt.value ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 opacity-50'}`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Blur Intensity */}
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] block mb-4 flex items-center gap-2">
+                  <Icons.Blur /> Glass Depth
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {BLUR_OPTIONS.map(opt => (
+                    <button 
+                      key={opt.name}
+                      onClick={() => setBlurLevel(opt.value)}
+                      className={`py-3 text-[10px] font-black uppercase tracking-widest glass border transition-all ${blurLevel === opt.value ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 opacity-50'}`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="w-full py-5 rounded-2xl text-white text-[11px] font-black uppercase tracking-[0.3em] mt-6 transition-all shadow-xl"
+                style={{ backgroundColor: accentColor }}
+              >
+                Apply System Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .animate-fade-in { animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </Layout>
   );
 };
